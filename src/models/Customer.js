@@ -1,119 +1,101 @@
 const Customer = require("../models/Customer");
 const Transaction = require("../models/Transaction");
 const mongoose = require("mongoose");
+// controllers/customerController.js
 
-// Add a new purchase to a customer
+/**
+ * Add a new purchase to a customer and sync to Dashboard Transactions
+ */
 exports.addPurchase = async (req, res) => {
-  // Start a session for atomicity
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const { customerId } = req.params;
+  const { amount, paid, description, date } = req.body;
+  const userId = req.user.id;
+  const prisma = req.prisma; // Assumes prisma is attached to req in middleware
 
   try {
-    const { customerId } = req.params;
-    const { amount, paid, description, date } = req.body;
-    const userId = req.user.id;
+    // Start a Prisma Transaction to ensure both records are created
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Create the Purchase record for the customer
+      const purchase = await tx.purchase.create({
+        data: {
+          amount: parseFloat(amount),
+          paid: parseFloat(paid) || 0,
+          description: description || "New Purchase",
+          date: date ? new Date(date) : new Date(),
+          customer: { connect: { id: customerId } },
+        },
+      });
 
-    // 1. Update Customer Purchase History
-    const customer = await Customer.findOne({
-      _id: customerId,
-      userId,
-    }).session(session);
-
-    if (!customer) {
-      await session.abortTransaction();
-      return res.status(404).json({ message: "Customer not found" });
-    }
-
-    const newPurchase = {
-      amount: parseFloat(amount),
-      paid: parseFloat(paid) || 0,
-      description: description || `Items bought by ${customer.name}`,
-      date: date || new Date(),
-    };
-
-    customer.purchases.push(newPurchase);
-    await customer.save({ session });
-
-    // 2. Auto-Sync to Dashboard Transactions (as Income)
-    if (newPurchase.paid > 0) {
-      await Transaction.create(
-        [
-          {
-            userId,
+      // 2. Automatically create an Income entry for the Main Dashboard
+      if (parseFloat(paid) > 0) {
+        await tx.transaction.create({
+          data: {
+            userId: userId,
             type: "income",
-            amount: newPurchase.paid,
+            amount: parseFloat(paid),
             category: "Customer Payment",
-            description: `Received from ${customer.name}: ${newPurchase.description}`,
-            date: newPurchase.date,
+            description: `Payment from Customer (Purchase Ref: ${purchase.id})`,
+            date: date ? new Date(date) : new Date(),
           },
-        ],
-        { session },
-      );
-    }
+        });
+      }
 
-    // Commit changes
-    await session.commitTransaction();
-    session.endSession();
+      return purchase;
+    });
 
-    res.status(201).json(customer);
+    res.status(201).json(result);
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    res
-      .status(500)
-      .json({ message: "Failed to sync transaction", error: error.message });
+    console.error("Add Purchase Error:", error);
+    res.status(500).json({
+      message: "Failed to record purchase and sync dashboard",
+      error: error.message,
+    });
   }
 };
 
-// Update an existing purchase (When customer pays pending debt)
+/**
+ * Update payment for an existing purchase (Clearing pending debt)
+ */
 exports.updatePayment = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const { purchaseId } = req.params; // Using purchaseId directly is safer in SQL
+  const { additionalPaid } = req.body;
+  const userId = req.user.id;
+  const prisma = req.prisma;
 
   try {
-    const { customerId, purchaseId } = req.params;
-    const { additionalPaid } = req.body;
-    const userId = req.user.id;
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Find the purchase and update the 'paid' column
+      const updatedPurchase = await tx.purchase.update({
+        where: { id: purchaseId },
+        data: {
+          paid: { increment: parseFloat(additionalPaid) },
+        },
+        include: { customer: true }, // To get the customer name for the dashboard
+      });
 
-    const customer = await Customer.findOne({
-      _id: customerId,
-      userId,
-    }).session(session);
-    const purchase = customer.purchases.id(purchaseId);
-
-    if (!purchase) {
-      await session.abortTransaction();
-      return res.status(404).json({ message: "Purchase record not found" });
-    }
-
-    // Update the paid amount in customer record
-    purchase.paid += parseFloat(additionalPaid);
-    await customer.save({ session });
-
-    // Auto-Sync the new payment to Dashboard
-    if (parseFloat(additionalPaid) > 0) {
-      await Transaction.create(
-        [
-          {
-            userId,
+      // 2. Create the Income entry for the Main Dashboard
+      if (parseFloat(additionalPaid) > 0) {
+        await tx.transaction.create({
+          data: {
+            userId: userId,
             type: "income",
             amount: parseFloat(additionalPaid),
             category: "Debt Recovery",
-            description: `Pending payment cleared by ${customer.name}`,
+            description: `Debt payment from ${updatedPurchase.customer.name}`,
             date: new Date(),
           },
-        ],
-        { session },
-      );
-    }
+        });
+      }
 
-    await session.commitTransaction();
-    session.endSession();
+      return updatedPurchase;
+    });
 
-    res.json(customer);
+    res.json(result);
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    res.status(500).json({ error: error.message });
+    console.error("Update Payment Error:", error);
+    res.status(500).json({
+      message: "Failed to update debt payment",
+      error: error.message,
+    });
   }
 };
