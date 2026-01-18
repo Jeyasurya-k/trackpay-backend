@@ -10,7 +10,7 @@ const customerRoutes = require("./routes/customers");
 
 // --- VERSION CONTROL CONFIGURATION ---
 const LATEST_APP_VERSION = "1.1.3";
-const UPDATE_URL = "hhttps://expo.dev/artifacts/eas/2PeXksNtsf6Xs79bBMtZD3.apk";
+const UPDATE_URL = "https://expo.dev/artifacts/eas/2PeXksNtsf6Xs79bBMtZD3.apk";
 
 const app = express();
 
