@@ -95,13 +95,12 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`
 🚀 TrackPay API Live
 📍 Port: ${PORT}
-🔗 URL: http://localhost:${PORT}
-✅ Prisma 5: Ready
-✅ Neon DB: Connected
+✅ Environment: ${process.env.NODE_ENV || "production"}
+✅ Database: Ready
   `);
 });
 

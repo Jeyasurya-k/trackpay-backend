@@ -1,55 +1,119 @@
-const mongoose = require('mongoose');
+const Customer = require("../models/Customer");
+const Transaction = require("../models/Transaction");
+const mongoose = require("mongoose");
 
-const purchaseSchema = new mongoose.Schema({
-  amount: {
-    type: Number,
-    required: true
-  },
-  paid: {
-    type: Number,
-    default: 0
-  },
-  description: String,
-  date: {
-    type: Date,
-    default: Date.now
+// Add a new purchase to a customer
+exports.addPurchase = async (req, res) => {
+  // Start a session for atomicity
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { customerId } = req.params;
+    const { amount, paid, description, date } = req.body;
+    const userId = req.user.id;
+
+    // 1. Update Customer Purchase History
+    const customer = await Customer.findOne({
+      _id: customerId,
+      userId,
+    }).session(session);
+
+    if (!customer) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    const newPurchase = {
+      amount: parseFloat(amount),
+      paid: parseFloat(paid) || 0,
+      description: description || `Items bought by ${customer.name}`,
+      date: date || new Date(),
+    };
+
+    customer.purchases.push(newPurchase);
+    await customer.save({ session });
+
+    // 2. Auto-Sync to Dashboard Transactions (as Income)
+    if (newPurchase.paid > 0) {
+      await Transaction.create(
+        [
+          {
+            userId,
+            type: "income",
+            amount: newPurchase.paid,
+            category: "Customer Payment",
+            description: `Received from ${customer.name}: ${newPurchase.description}`,
+            date: newPurchase.date,
+          },
+        ],
+        { session },
+      );
+    }
+
+    // Commit changes
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(201).json(customer);
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res
+      .status(500)
+      .json({ message: "Failed to sync transaction", error: error.message });
   }
-}, { timestamps: true });
+};
 
-const customerSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  name: {
-    type: String,
-    required: true
-  },
-  location: String,
-  phone: {
-    type: String,
-    required: true
-  },
-  purchases: [purchaseSchema]
-}, { timestamps: true });
+// Update an existing purchase (When customer pays pending debt)
+exports.updatePayment = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-// Virtual for total amount
-customerSchema.virtual('totalAmount').get(function() {
-  return this.purchases.reduce((sum, p) => sum + p.amount, 0);
-});
+  try {
+    const { customerId, purchaseId } = req.params;
+    const { additionalPaid } = req.body;
+    const userId = req.user.id;
 
-// Virtual for total paid
-customerSchema.virtual('totalPaid').get(function() {
-  return this.purchases.reduce((sum, p) => sum + p.paid, 0);
-});
+    const customer = await Customer.findOne({
+      _id: customerId,
+      userId,
+    }).session(session);
+    const purchase = customer.purchases.id(purchaseId);
 
-// Virtual for pending amount
-customerSchema.virtual('pending').get(function() {
-  return this.totalAmount - this.totalPaid;
-});
+    if (!purchase) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Purchase record not found" });
+    }
 
-customerSchema.set('toJSON', { virtuals: true });
-customerSchema.set('toObject', { virtuals: true });
+    // Update the paid amount in customer record
+    purchase.paid += parseFloat(additionalPaid);
+    await customer.save({ session });
 
-module.exports = mongoose.model('Customer', customerSchema);
+    // Auto-Sync the new payment to Dashboard
+    if (parseFloat(additionalPaid) > 0) {
+      await Transaction.create(
+        [
+          {
+            userId,
+            type: "income",
+            amount: parseFloat(additionalPaid),
+            category: "Debt Recovery",
+            description: `Pending payment cleared by ${customer.name}`,
+            date: new Date(),
+          },
+        ],
+        { session },
+      );
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.json(customer);
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).json({ error: error.message });
+  }
+};
