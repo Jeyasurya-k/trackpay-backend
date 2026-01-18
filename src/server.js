@@ -8,11 +8,14 @@ const authRoutes = require("./routes/auth");
 const transactionRoutes = require("./routes/transactions");
 const customerRoutes = require("./routes/customers");
 
+// --- VERSION CONTROL CONFIGURATION ---
+const LATEST_APP_VERSION = "1.1.0";
+const UPDATE_URL = "https://expo.dev/artifacts/eas/eFfNHUufQBbj8KTKVtTV6h.apk";
+
 const app = express();
 
 /**
  * Prisma 5 with Neon Optimization
- * In production (Render/Neon), we initialize Prisma once.
  */
 const prisma = new PrismaClient({
   log:
@@ -26,7 +29,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging (Enhanced for debugging 404s)
+// Request logging
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
   next();
@@ -38,24 +41,35 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- NEW CONFIGURATION ENDPOINT ---
+app.get("/api/app-config", (req, res) => {
+  res.json({
+    latestVersion: LATEST_APP_VERSION,
+    forceUpdate: true, // Set to false if you want the modal to be skippable
+    updateUrl: UPDATE_URL,
+    message:
+      "A new version of TrackPay is available with improved sync and bug fixes.",
+  });
+});
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/customers", customerRoutes);
 
-// Root route - Helpful for checking if the live server is up
+// Root route - Updated to show dynamic version
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
     message: "TrackPay API is running on Render",
-    version: "1.0.0",
+    version: LATEST_APP_VERSION,
     environment: process.env.NODE_ENV || "production",
   });
 });
 
+// Health check endpoint
 app.get("/api/health", async (req, res) => {
   try {
-    // A simple query to verify database connectivity
     await prisma.$queryRaw`SELECT 1`;
     res.json({
       status: "healthy",
@@ -72,12 +86,11 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-// 404 handler (Catch-all for undefined routes)
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found",
     path: req.originalUrl,
-    hint: "Check if you are using the correct prefix like /api/auth/login",
   });
 });
 
@@ -99,12 +112,12 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`
 🚀 TrackPay API Live
 📍 Port: ${PORT}
+✅ Version: ${LATEST_APP_VERSION}
 ✅ Environment: ${process.env.NODE_ENV || "production"}
-✅ Database: Ready
   `);
 });
 
-// Graceful shutdown logic for Render
+// Graceful shutdown
 const gracefullyShutdown = async (signal) => {
   console.log(`${signal} received. Shutting down gracefully...`);
   server.close(async () => {
