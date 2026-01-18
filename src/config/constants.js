@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 
 const getApiUrl = () => {
   // Production API URL
-  const PRODUCTION_URL = "https://trackpay-api.onrender.com/api";
+  const PRODUCTION_URL = "https://trackpay-backend.onrender.com/api";
 
   // Get from app.json extra config
   const configUrl = Constants.expoConfig?.extra?.apiUrl;
@@ -29,10 +29,12 @@ export const API_URL = getApiUrl();
 
 export const APP_CONFIG = {
   appName: "TrackPay",
-  version: "1.0.0",
+  version: "1.0.1",
   defaultCategories: [
     "Salary",
     "Freelance",
+    "Customer Payment", // Added for Sync
+    "Debt Recovery", // Added for Sync
     "Food",
     "Transport",
     "Shopping",
