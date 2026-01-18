@@ -9,8 +9,8 @@ const transactionRoutes = require("./routes/transactions");
 const customerRoutes = require("./routes/customers");
 
 // --- VERSION CONTROL CONFIGURATION ---
-const LATEST_APP_VERSION = "1.1.0";
-const UPDATE_URL = "https://expo.dev/artifacts/eas/eFfNHUufQBbj8KTKVtTV6h.apk";
+const LATEST_APP_VERSION = "1.1.2";
+const UPDATE_URL = "https://expo.dev/artifacts/eas/shDsHr8ZhsYZZj1N2dqeUS.apk";
 
 const app = express();
 
