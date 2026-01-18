@@ -1,40 +1,184 @@
-const Customer = require("../models/Customer");
-const Transaction = require("../models/Transaction");
-const mongoose = require("mongoose");
-// controllers/customerController.js
+const express = require('express');
+const authMiddleware = require('../middleware/auth');
 
-/**
- * Add a new purchase to a customer and sync to Dashboard Transactions
- */
-exports.addPurchase = async (req, res) => {
-  const { customerId } = req.params;
-  const { amount, paid, description, date } = req.body;
-  const userId = req.user.id;
-  const prisma = req.prisma; // Assumes prisma is attached to req in middleware
+const router = express.Router();
 
+// All routes require authentication
+router.use(authMiddleware);
+
+// Get all customers with summary
+router.get('/', async (req, res) => {
   try {
-    // Start a Prisma Transaction to ensure both records are created
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Create the Purchase record for the customer
+    const customers = await req.prisma.customer.findMany({
+      where: { userId: req.userId },
+      include: { 
+        purchases: {
+          orderBy: { date: 'desc' }
+        }
+      }
+    });
+    
+    const summary = customers.reduce((acc, customer) => {
+      const totalAmount = customer.purchases.reduce((sum, p) => sum + p.amount, 0);
+      const totalPaid = customer.purchases.reduce((sum, p) => sum + p.paid, 0);
+      return {
+        totalAmount: acc.totalAmount + totalAmount,
+        totalPending: acc.totalPending + (totalAmount - totalPaid)
+      };
+    }, { totalAmount: 0, totalPending: 0 });
+
+    res.json({ customers, summary });
+  } catch (error) {
+    console.error('Get customers error:', error);
+    res.status(500).json({ error: 'Failed to fetch customers' });
+  }
+});
+
+// Get single customer
+router.get('/:id', async (req, res) => {
+  try {
+    const customer = await req.prisma.customer.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.userId,
+      },
+      include: { 
+        purchases: {
+          orderBy: { date: 'desc' }
+        }
+      }
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    res.json(customer);
+  } catch (error) {
+    console.error('Get customer error:', error);
+    res.status(500).json({ error: 'Failed to fetch customer' });
+  }
+});
+
+// Create customer
+router.post('/', async (req, res) => {
+  try {
+    const { name, phone, location } = req.body;
+
+    if (!name || !phone) {
+      return res.status(400).json({ error: 'Name and phone are required' });
+    }
+
+    const customer = await req.prisma.customer.create({
+      data: {
+        name,
+        phone,
+        location: location || null,
+        userId: req.userId,
+      },
+      include: { purchases: true }
+    });
+
+    res.status(201).json(customer);
+  } catch (error) {
+    console.error('Create customer error:', error);
+    res.status(500).json({ error: 'Failed to create customer' });
+  }
+});
+
+// Update customer
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify ownership
+    const existing = await req.prisma.customer.findFirst({
+      where: { id, userId: req.userId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customer = await req.prisma.customer.update({
+      where: { id },
+      data: req.body,
+      include: { purchases: true }
+    });
+
+    res.json(customer);
+  } catch (error) {
+    console.error('Update customer error:', error);
+    res.status(500).json({ error: 'Failed to update customer' });
+  }
+});
+
+// Delete customer
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify ownership
+    const existing = await req.prisma.customer.findFirst({
+      where: { id, userId: req.userId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    await req.prisma.customer.delete({
+      where: { id },
+    });
+
+    res.json({ message: 'Customer deleted successfully' });
+  } catch (error) {
+    console.error('Delete customer error:', error);
+    res.status(500).json({ error: 'Failed to delete customer' });
+  }
+});
+
+// Add purchase - SYNCS TO DASHBOARD
+router.post('/:id/purchases', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, paid, description, date } = req.body;
+
+    // Verify customer ownership
+    const customer = await req.prisma.customer.findFirst({
+      where: { id, userId: req.userId }
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    if (!amount) {
+      return res.status(400).json({ error: 'Amount is required' });
+    }
+
+    // Use Prisma transaction to ensure both records are created atomically
+    const result = await req.prisma.$transaction(async (tx) => {
+      // 1. Create the Purchase record
       const purchase = await tx.purchase.create({
         data: {
           amount: parseFloat(amount),
           paid: parseFloat(paid) || 0,
-          description: description || "New Purchase",
+          description: description || 'New Purchase',
           date: date ? new Date(date) : new Date(),
-          customer: { connect: { id: customerId } },
+          customerId: id,
         },
       });
 
-      // 2. Automatically create an Income entry for the Main Dashboard
+      // 2. If payment was made, create an Income transaction in main dashboard
       if (parseFloat(paid) > 0) {
         await tx.transaction.create({
           data: {
-            userId: userId,
-            type: "income",
+            userId: req.userId,
+            type: 'income',
             amount: parseFloat(paid),
-            category: "Customer Payment",
-            description: `Payment from Customer (Purchase Ref: ${purchase.id})`,
+            category: 'Customer Payment',
+            description: `Payment from ${customer.name} - ${description || 'Purchase'}`,
             date: date ? new Date(date) : new Date(),
           },
         });
@@ -43,59 +187,89 @@ exports.addPurchase = async (req, res) => {
       return purchase;
     });
 
-    res.status(201).json(result);
-  } catch (error) {
-    console.error("Add Purchase Error:", error);
-    res.status(500).json({
-      message: "Failed to record purchase and sync dashboard",
-      error: error.message,
+    // Get updated customer with all purchases
+    const updatedCustomer = await req.prisma.customer.findUnique({
+      where: { id },
+      include: { 
+        purchases: {
+          orderBy: { date: 'desc' }
+        }
+      }
     });
+
+    res.status(201).json(updatedCustomer);
+  } catch (error) {
+    console.error('Add purchase error:', error);
+    res.status(500).json({ error: 'Failed to add purchase' });
   }
-};
+});
 
-/**
- * Update payment for an existing purchase (Clearing pending debt)
- */
-exports.updatePayment = async (req, res) => {
-  const { purchaseId } = req.params; // Using purchaseId directly is safer in SQL
-  const { additionalPaid } = req.body;
-  const userId = req.user.id;
-  const prisma = req.prisma;
-
+// Update purchase payment - SYNCS TO DASHBOARD
+router.put('/:customerId/purchases/:purchaseId', async (req, res) => {
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Find the purchase and update the 'paid' column
-      const updatedPurchase = await tx.purchase.update({
+    const { customerId, purchaseId } = req.params;
+    const { paid } = req.body;
+
+    // Verify customer ownership
+    const customer = await req.prisma.customer.findFirst({
+      where: { id: customerId, userId: req.userId }
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Get the current purchase to calculate additional payment
+    const currentPurchase = await req.prisma.purchase.findUnique({
+      where: { id: purchaseId }
+    });
+
+    if (!currentPurchase) {
+      return res.status(404).json({ error: 'Purchase not found' });
+    }
+
+    const additionalPayment = parseFloat(paid) - currentPurchase.paid;
+
+    // Use Prisma transaction to ensure both records are updated atomically
+    const result = await req.prisma.$transaction(async (tx) => {
+      // 1. Update the Purchase payment
+      const purchase = await tx.purchase.update({
         where: { id: purchaseId },
-        data: {
-          paid: { increment: parseFloat(additionalPaid) },
-        },
-        include: { customer: true }, // To get the customer name for the dashboard
+        data: { paid: parseFloat(paid) },
       });
 
-      // 2. Create the Income entry for the Main Dashboard
-      if (parseFloat(additionalPaid) > 0) {
+      // 2. If additional payment was made, create an Income transaction in main dashboard
+      if (additionalPayment > 0) {
         await tx.transaction.create({
           data: {
-            userId: userId,
-            type: "income",
-            amount: parseFloat(additionalPaid),
-            category: "Debt Recovery",
-            description: `Debt payment from ${updatedPurchase.customer.name}`,
+            userId: req.userId,
+            type: 'income',
+            amount: additionalPayment,
+            category: 'Customer Payment',
+            description: `Payment from ${customer.name} - ${currentPurchase.description || 'Debt Recovery'}`,
             date: new Date(),
           },
         });
       }
 
-      return updatedPurchase;
+      return purchase;
     });
 
-    res.json(result);
-  } catch (error) {
-    console.error("Update Payment Error:", error);
-    res.status(500).json({
-      message: "Failed to update debt payment",
-      error: error.message,
+    // Get updated customer with all purchases
+    const updatedCustomer = await req.prisma.customer.findUnique({
+      where: { id: customerId },
+      include: { 
+        purchases: {
+          orderBy: { date: 'desc' }
+        }
+      }
     });
+
+    res.json(updatedCustomer);
+  } catch (error) {
+    console.error('Update purchase error:', error);
+    res.status(500).json({ error: 'Failed to update purchase' });
   }
-};
+});
+
+module.exports = router;
