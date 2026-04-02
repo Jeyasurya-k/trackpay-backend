@@ -11,7 +11,7 @@ const reportRoutes = require("./routes/reports");
 
 // --- VERSION CONTROL CONFIGURATION ---
 const LATEST_APP_VERSION = "1.1.4";
-const UPDATE_URL = "https://expo.dev/artifacts/eas/rYqFECPH8EbBY2FvFQundV.aab";
+const UPDATE_URL = "https://expo.dev/artifacts/eas/vWY28PhrP3QNHD233vwPKp.apk";
 
 const app = express();
 

@@ -1,3 +1,30 @@
 {
-  "expo": {}
+  "expo": {
+    "name": "TrackPay",
+    "slug": "trackpay",
+    "version": "1.1.4",
+    "orientation": "portrait",
+    "icon": "./src/assest/splash-icon.jpg",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./src/assest/splash-icon.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#2196F3"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.WebCraft.trackpay",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/splash-icon.jpg",
+        "backgroundColor": "#2196F3"
+      },
+      "package": "com.WebCraft.trackpay"
+    },
+    "owner": "jeyasurya2k3s-organization"
+  }
 }
