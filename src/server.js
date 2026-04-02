@@ -7,6 +7,7 @@ const { PrismaClient } = require("@prisma/client");
 const authRoutes = require("./routes/auth");
 const transactionRoutes = require("./routes/transactions");
 const customerRoutes = require("./routes/customers");
+const reportRoutes = require("./routes/reports");
 
 // --- VERSION CONTROL CONFIGURATION ---
 const LATEST_APP_VERSION = "1.1.3";
@@ -56,6 +57,7 @@ app.get("/api/app-config", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/reports", reportRoutes);
 
 // Root route - Updated to show dynamic version
 app.get("/", (req, res) => {

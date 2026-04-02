@@ -8,9 +8,12 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  username     String        @unique
-  password     String
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String
+  password      String?  // Optional because Apple users won't have a password
+  appleId       String?  @unique // To store the unique Apple user identifier
+  avatar        String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
