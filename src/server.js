@@ -55,14 +55,20 @@ app.use(helmet());
 // 2. CORS — whitelist specific origins only
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : ["http://localhost:8081", "http://localhost:19006"];
+  : [
+      "http://localhost:8081",
+      "http://localhost:19006",
+      "http://localhost:3000",
+      "https://trackpay--1a3rdnyuyp.expo.app",
+    ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, Postman, server-to-server)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
+      // Allow any expo.app subdomain for dev tunnels
+      if (origin.endsWith(".expo.app") || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS"));
