@@ -18,6 +18,8 @@ model User {
   updatedAt    DateTime      @updatedAt
   transactions Transaction[]
   customers    Customer[]
+  groups       Group[]
+  groupMembers GroupMember[]
 
   @@index([username])
 }
@@ -64,4 +66,71 @@ model Purchase {
   updatedAt   DateTime @updatedAt
 
   @@index([customerId])
+  @@index([customerId, date])
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  expenses    GroupExpense[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model GroupMember {
+  id        String   @id @default(uuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  expenses  GroupExpenseSplit[]
+  paidExpenses GroupExpense[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([userId])
+}
+
+model GroupExpense {
+  id              String   @id @default(uuid())
+  groupId         String
+  group           Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  amount          Float
+  description     String?
+  category        String?
+  paidByMemberId  String
+  paidByMember    GroupMember @relation(fields: [paidByMemberId], references: [id], onDelete: Restrict)
+  splitType       String   @default("equal") // "equal" or "custom"
+  date            DateTime @default(now())
+  splits          GroupExpenseSplit[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([paidByMemberId])
+}
+
+model GroupExpenseSplit {
+  id          String   @id @default(uuid())
+  expenseId   String
+  expense     GroupExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  memberId    String
+  member      GroupMember  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amount      Float
+  status      String   @default("pending") // "pending" or "settled"
+  settledDate DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([expenseId])
+  @@index([memberId])
 }

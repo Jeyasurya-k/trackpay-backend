@@ -1,15 +1,21 @@
 const express = require("express");
 const authMiddleware = require("../middleware/auth");
+const {
+  validateCreateTransaction,
+  validateDateQuery,
+  validateUUID,
+} = require("../middleware/validate");
 
 const router = express.Router();
 router.use(authMiddleware);
 
-router.get("/", async (req, res) => {
+// GET /transactions — with pagination + date validation
+router.get("/", validateDateQuery, async (req, res) => {
   try {
-    const { type, category, startDate, endDate } = req.query;
+    const { type, category, startDate, endDate, page = 1, limit = 50 } = req.query;
     const where = { userId: req.userId };
 
-    if (type) where.type = type;
+    if (type && ["income", "expense"].includes(type)) where.type = type;
     if (category) where.category = category;
     if (startDate || endDate) {
       where.date = {};
@@ -17,33 +23,45 @@ router.get("/", async (req, res) => {
       if (endDate) where.date.lte = new Date(endDate);
     }
 
-    const transactions = await req.prisma.transaction.findMany({
-      where,
-      orderBy: { date: "desc" },
-    });
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
-    res.json(transactions);
+    const [transactions, total] = await Promise.all([
+      req.prisma.transaction.findMany({
+        where,
+        orderBy: { date: "desc" },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+      }),
+      req.prisma.transaction.count({ where }),
+    ]);
+
+    res.json({
+      transactions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
   } catch (error) {
+    console.error("Fetch transactions error:", error.message);
     res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
 
-router.post("/", async (req, res) => {
+// POST /transactions
+router.post("/", validateCreateTransaction, async (req, res) => {
   try {
     const { type, amount, category, description, date } = req.body;
-
-    if (!type || !amount || !category) {
-      return res
-        .status(400)
-        .json({ error: "Type, amount, and category are required" });
-    }
 
     const transaction = await req.prisma.transaction.create({
       data: {
         type,
         amount: parseFloat(amount),
-        category,
-        description: description || null,
+        category: category.trim(),
+        description: description ? description.trim() : null,
         date: date ? new Date(date) : new Date(),
         userId: req.userId,
       },
@@ -51,10 +69,12 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(transaction);
   } catch (error) {
+    console.error("Create transaction error:", error.message);
     res.status(500).json({ error: "Failed to create transaction" });
   }
 });
 
+// DELETE /transactions/:id
 router.delete("/:id", async (req, res) => {
   try {
     const existing = await req.prisma.transaction.findFirst({
@@ -68,11 +88,13 @@ router.delete("/:id", async (req, res) => {
     await req.prisma.transaction.delete({ where: { id: req.params.id } });
     res.json({ message: "Transaction deleted successfully" });
   } catch (error) {
+    console.error("Delete transaction error:", error.message);
     res.status(500).json({ error: "Failed to delete transaction" });
   }
 });
 
-router.get("/summary", async (req, res) => {
+// GET /transactions/summary
+router.get("/summary", validateDateQuery, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const where = { userId: req.userId };
@@ -102,6 +124,7 @@ router.get("/summary", async (req, res) => {
 
     res.json({ income, expense, balance: income - expense, categoryBreakdown });
   } catch (error) {
+    console.error("Summary error:", error.message);
     res.status(500).json({ error: "Failed to get summary" });
   }
 });
