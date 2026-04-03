@@ -79,7 +79,8 @@ router.post("/login", validateLogin, async (req, res) => {
     }
 
     if (!user.password) {
-      return res.status(401).json({ error: "This account uses social login. Please sign in with Apple." });
+      const provider = user.googleId ? "Google" : "Apple";
+      return res.status(401).json({ error: `This account uses ${provider} sign-in. Please use that option instead.` });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -96,6 +97,80 @@ router.post("/login", validateLogin, async (req, res) => {
   } catch (error) {
     console.error("Login error:", error.message);
     res.status(500).json({ error: "Login failed. Please try again." });
+  }
+});
+
+// GOOGLE AUTH
+router.post("/google-login", async (req, res) => {
+  try {
+    const { accessToken } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({ error: "Access token is required" });
+    }
+
+    // Verify token and get user info from Google
+    const googleRes = await fetch(
+      `https://www.googleapis.com/oauth2/v3/userinfo`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!googleRes.ok) {
+      return res.status(401).json({ error: "Invalid Google access token" });
+    }
+
+    const googleUser = await googleRes.json();
+    const { sub: googleId, email, name, picture } = googleUser;
+
+    if (!googleId) {
+      return res.status(401).json({ error: "Could not retrieve Google account info" });
+    }
+
+    // Find by googleId first, then by email
+    let user = await req.prisma.user.findUnique({ where: { googleId } });
+
+    if (!user && email) {
+      user = await req.prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+      });
+      if (user) {
+        // Link existing account to Google
+        user = await req.prisma.user.update({
+          where: { id: user.id },
+          data: { googleId },
+        });
+      }
+    }
+
+    if (!user) {
+      // Create new account
+      const baseUsername = (name || email.split("@")[0])
+        .replace(/\s+/g, "_")
+        .toLowerCase();
+      let username = baseUsername;
+      let suffix = 1;
+      while (await req.prisma.user.findFirst({ where: { username } })) {
+        username = `${baseUsername}${suffix++}`;
+      }
+
+      user = await req.prisma.user.create({
+        data: {
+          googleId,
+          email: email.toLowerCase(),
+          username,
+          avatar: picture || null,
+        },
+      });
+    }
+
+    const token = generateToken(user.id);
+    res.json({
+      token,
+      user: { id: user.id, username: user.username, email: user.email },
+    });
+  } catch (error) {
+    console.error("Google login error:", error.message);
+    res.status(500).json({ error: "Google login failed. Please try again." });
   }
 });
 

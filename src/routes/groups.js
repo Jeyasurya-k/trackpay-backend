@@ -489,6 +489,68 @@ router.put(
   }
 );
 
+// POST - Settle all pending splits from one member to another (used by Settlement tab)
+router.post("/:groupId/settle-debt", async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { fromMemberId, toMemberId } = req.body;
+
+    if (!fromMemberId || !toMemberId) {
+      return res.status(400).json({ error: "fromMemberId and toMemberId are required" });
+    }
+
+    const group = await req.prisma.group.findUnique({ where: { id: groupId } });
+    if (!group || group.userId !== req.userId) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    // Find all pending splits where fromMember owes toMember
+    // i.e. split.memberId === fromMemberId AND expense.paidByMemberId === toMemberId
+    const pendingSplits = await req.prisma.groupExpenseSplit.findMany({
+      where: {
+        memberId: fromMemberId,
+        status: "pending",
+        expense: {
+          groupId,
+          paidByMemberId: toMemberId,
+        },
+      },
+      include: { expense: true },
+    });
+
+    if (pendingSplits.length === 0) {
+      return res.status(404).json({ error: "No pending splits found for this debt" });
+    }
+
+    const totalAmount = pendingSplits.reduce((sum, s) => sum + s.amount, 0);
+
+    // Settle all splits and record a transaction atomically
+    await req.prisma.$transaction([
+      ...pendingSplits.map((split) =>
+        req.prisma.groupExpenseSplit.update({
+          where: { id: split.id },
+          data: { status: "settled", settledDate: new Date() },
+        })
+      ),
+      req.prisma.transaction.create({
+        data: {
+          userId: req.userId,
+          type: "expense",
+          amount: totalAmount,
+          category: "Group Settlement",
+          description: `Settled group debt in "${group.name}"`,
+          date: new Date(),
+        },
+      }),
+    ]);
+
+    res.json({ settled: pendingSplits.length, totalAmount });
+  } catch (error) {
+    console.error("Settle debt error:", error.message);
+    res.status(500).json({ error: "Failed to settle debt" });
+  }
+});
+
 // GET - Settlement summary for a group
 router.get("/:groupId/settlement", async (req, res) => {
   try {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrackPay",
     "slug": "trackpay",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./src/assest/splash-icon.jpg",
     "userInterfaceStyle": "light",

@@ -21,9 +21,9 @@ try {
 }
 
 // --- VERSION CONTROL CONFIGURATION ---
-const LATEST_APP_VERSION = process.env.APP_VERSION || "1.2.1";
+const LATEST_APP_VERSION = process.env.APP_VERSION || "1.2.2";
 const UPDATE_URL =
-  "https://expo.dev/artifacts/eas/ktpLFuuK6XiRmGMRGPUqAJ.apk";
+  "https://expo.dev/artifacts/eas/uBx6f58AS4LA5hXbX8bBic.apk";
 
 const app = express();
 
