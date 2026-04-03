@@ -65,8 +65,8 @@ router.get("/", async (req, res) => {
 
     res.json({ groups: groupsWithSummary });
   } catch (error) {
-    console.error("Get groups error:", error.message);
-    res.status(500).json({ error: "Failed to retrieve groups" });
+    console.error("Get groups error:", error.message, error.stack);
+    res.status(500).json({ error: "Failed to retrieve groups", detail: error.message });
   }
 });
 

@@ -23,16 +23,18 @@ router.post("/signup", validateSignup, async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    const existingUser = await req.prisma.user.findFirst({
-      where: {
-        OR: [{ email: email.toLowerCase() }, { username }],
-      },
+    const existingEmail = await req.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
     });
+    if (existingEmail) {
+      return res.status(400).json({ error: "An account with this email already exists" });
+    }
 
-    if (existingUser) {
-      return res
-        .status(400)
-        .json({ error: "User with this email or username already exists" });
+    const existingUsername = await req.prisma.user.findFirst({
+      where: { username },
+    });
+    if (existingUsername) {
+      return res.status(400).json({ error: "This username is already taken. Please choose another." });
     }
 
     // Bcrypt with cost factor 12 (stronger than 10)
@@ -72,14 +74,17 @@ router.post("/login", validateLogin, async (req, res) => {
       },
     });
 
-    // Always return same error to prevent user enumeration
-    if (!user || !user.password) {
-      return res.status(401).json({ error: "Invalid email/username or password" });
+    if (!user) {
+      return res.status(401).json({ error: "No account found with that email or username" });
+    }
+
+    if (!user.password) {
+      return res.status(401).json({ error: "This account uses social login. Please sign in with Apple." });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: "Invalid email/username or password" });
+      return res.status(401).json({ error: "Incorrect password. Please try again." });
     }
 
     const token = generateToken(user.id);

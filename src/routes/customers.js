@@ -55,9 +55,8 @@ router.get("/:id", async (req, res) => {
         userId: req.userId,
       },
       include: {
-        purchases: {
-          orderBy: { date: "desc" },
-        },
+        purchases: { orderBy: { date: "desc" } },
+        payments: { orderBy: { date: "desc" } },
       },
     });
 
@@ -155,6 +154,89 @@ router.post("/:id/purchases", validateAddPurchase, async (req, res) => {
   } catch (error) {
     console.error("Add purchase error:", error.message);
     res.status(500).json({ error: "Failed to add purchase" });
+  }
+});
+
+// Record a payment — creates a CustomerPayment record + distributes across purchases FIFO
+router.post("/:id/payments", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, description } = req.body;
+
+    const parsedAmount = parseFloat(amount);
+    if (!parsedAmount || parsedAmount <= 0) {
+      return res.status(400).json({ error: "Invalid payment amount" });
+    }
+
+    const customer = await req.prisma.customer.findFirst({
+      where: { id, userId: req.userId },
+      include: { purchases: { orderBy: { date: "asc" } } },
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+
+    const totalPending = customer.purchases.reduce(
+      (sum, p) => sum + (p.amount - (p.paid || 0)),
+      0,
+    );
+
+    if (parsedAmount > totalPending + 0.01) {
+      return res.status(400).json({ error: "Payment exceeds total outstanding balance" });
+    }
+
+    await req.prisma.$transaction(async (tx) => {
+      // 1. Create a CustomerPayment record
+      await tx.customerPayment.create({
+        data: {
+          amount: parsedAmount,
+          description: description ? description.trim() : "Payment received",
+          date: new Date(),
+          customerId: id,
+        },
+      });
+
+      // 2. Distribute payment across purchases (FIFO)
+      let remaining = parsedAmount;
+      for (const purchase of customer.purchases) {
+        if (remaining <= 0) break;
+        const balance = purchase.amount - (purchase.paid || 0);
+        if (balance > 0) {
+          const payFor = Math.min(balance, remaining);
+          await tx.purchase.update({
+            where: { id: purchase.id },
+            data: { paid: (purchase.paid || 0) + payFor },
+          });
+          remaining -= payFor;
+        }
+      }
+
+      // 3. Sync to transactions dashboard
+      await tx.transaction.create({
+        data: {
+          userId: req.userId,
+          type: "income",
+          amount: parsedAmount,
+          category: "Customer Payment",
+          description: `Payment from ${customer.name}${description ? " - " + description.trim() : ""}`,
+          date: new Date(),
+        },
+      });
+    });
+
+    const updatedCustomer = await req.prisma.customer.findUnique({
+      where: { id },
+      include: {
+        purchases: { orderBy: { date: "desc" } },
+        payments: { orderBy: { date: "desc" } },
+      },
+    });
+
+    res.status(201).json(updatedCustomer);
+  } catch (error) {
+    console.error("Record payment error:", error.message);
+    res.status(500).json({ error: "Failed to record payment" });
   }
 });
 

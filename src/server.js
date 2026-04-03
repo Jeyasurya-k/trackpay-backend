@@ -21,9 +21,9 @@ try {
 }
 
 // --- VERSION CONTROL CONFIGURATION ---
-const LATEST_APP_VERSION = "1.1.4";
+const LATEST_APP_VERSION = "1.2.0";
 const UPDATE_URL =
-  "https://expo.dev/artifacts/eas/vWY28PhrP3QNHD233vwPKp.apk";
+  "https://expo.dev/artifacts/eas/vp6goWXbPVZc2m9VpJX4QP.apk";
 
 const app = express();
 
@@ -103,11 +103,8 @@ app.use(express.json({ limit: "10kb" })); // Prevent large payload attacks
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
 // 6. Request logging (sanitized — no sensitive data)
-const fs = require("fs");
 app.use((req, res, next) => {
-  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${req.ip}`;
-  console.log(logMsg);
-  fs.appendFileSync("/tmp/request-log.txt", logMsg + "\n");
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${req.ip}`);
   next();
 });
 
@@ -210,3 +207,17 @@ const gracefullyShutdown = async (signal) => {
 
 process.on("SIGTERM", () => gracefullyShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefullyShutdown("SIGINT"));
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err.message, err.stack);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+  process.exit(1);
+});
+
+process.on("exit", (code) => {
+  console.log("PROCESS EXITING with code:", code);
+});

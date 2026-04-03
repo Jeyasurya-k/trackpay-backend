@@ -41,15 +41,16 @@ model Transaction {
 }
 
 model Customer {
-  id        String     @id @default(uuid())
+  id        String            @id @default(uuid())
   name      String
   location  String?
   phone     String
   userId    String
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   purchases Purchase[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  payments  CustomerPayment[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 
   @@index([userId])
 }
@@ -58,6 +59,20 @@ model Purchase {
   id          String   @id @default(uuid())
   amount      Float
   paid        Float    @default(0)
+  description String?
+  date        DateTime @default(now())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([customerId, date])
+}
+
+model CustomerPayment {
+  id          String   @id @default(uuid())
+  amount      Float
   description String?
   date        DateTime @default(now())
   customerId  String
