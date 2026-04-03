@@ -29,7 +29,7 @@ export const API_URL = getApiUrl();
 
 export const APP_CONFIG = {
   appName: "TrackPay",
-  version: "1.2.0",
+  version: "1.2.1",
   defaultCategories: [
     "Salary",
     "Freelance",
