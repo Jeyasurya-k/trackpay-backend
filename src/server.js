@@ -24,7 +24,7 @@ try {
 const LATEST_APP_VERSION = process.env.APP_VERSION || "1.2.2";
 const UPDATE_URL =
   process.env.UPDATE_URL ||
-  "https://expo.dev/artifacts/eas/21nvV3roKTectn6ximK7pa.apk";
+  "https://expo.dev/artifacts/eas/oyDZKPpTCUaM1kLXNiCW8w.apk";
 
 const app = express();
 
