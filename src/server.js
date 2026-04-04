@@ -22,8 +22,9 @@ try {
 
 // --- VERSION CONTROL CONFIGURATION ---
 const LATEST_APP_VERSION = process.env.APP_VERSION || "1.2.2";
-const UPDATE_URL = process.env.UPDATE_URL ||
-  "https://expo.dev/artifacts/eas/35aftAUXVXFmdDd2WncC3V.apk";
+const UPDATE_URL =
+  process.env.UPDATE_URL ||
+  "https://expo.dev/artifacts/eas/21nvV3roKTectn6ximK7pa.apk";
 
 const app = express();
 
@@ -44,7 +45,9 @@ console.log("🔧 SERVER INITIALIZED - About to set up middleware");
 // 0. Early logging to catch all requests
 app.use((req, res, next) => {
   if (req.path.includes("groups")) {
-    console.log(`[EARLY] ${req.method} ${req.path} (originalUrl: ${req.originalUrl})`);
+    console.log(
+      `[EARLY] ${req.method} ${req.path} (originalUrl: ${req.originalUrl})`,
+    );
   }
   next();
 });
@@ -96,7 +99,9 @@ const authLimiter = rateLimit({
   max: 10, // Only 10 login attempts per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many login attempts. Please try again after 15 minutes." },
+  message: {
+    error: "Too many login attempts. Please try again after 15 minutes.",
+  },
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
@@ -110,7 +115,9 @@ app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
 // 6. Request logging (sanitized — no sensitive data)
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${req.ip}`);
+  console.log(
+    `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${req.ip}`,
+  );
   next();
 });
 
